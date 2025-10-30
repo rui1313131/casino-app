@@ -1,0 +1,68 @@
+name: CI/CD Pipeline (Test, Deploy Frontend)
+
+on:
+  push:
+    branches:
+      - main  # mainブランチへのプッシュをトリガー
+
+jobs:
+  # --- Job 1: テストの実行 ---
+  test:
+    name: Run Tests (Lint, Unit, E2E)
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm' # npmの依存関係をキャッシュ
+
+      - name: Install dependencies
+        run: npm ci
+
+      # (オプション) Lintの実行
+      - name: Run Lint
+        run: npm run lint
+
+      # (必須) バックエンド単体テストの実行
+      - name: Run Backend Unit Tests (Jest)
+        run: npm run test:unit # package.json で "test:unit" を定義
+
+      # (必須) E2Eテストの実行
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+      - name: Run E2E Tests (Playwright)
+        run: npm run test:e2e # package.json で "test:e2e" を定義
+        env:
+          # E2Eテスト用のテストアカウント情報をSecretから読み込む
+          TEST_USER_A_EMAIL: ${{ secrets.TEST_USER_A_EMAIL }}
+          TEST_USER_A_PASSWORD: ${{ secrets.TEST_USER_A_PASSWORD }}
+          TEST_USER_B_EMAIL: ${{ secrets.TEST_USER_B_EMAIL }}
+          TEST_USER_B_PASSWORD: ${{ secrets.TEST_USER_B_PASSWORD }}
+
+  # --- Job 2: フロントエンド (Next.js) のデプロイ ---
+  deploy-frontend:
+    name: Deploy Frontend (Vercel)
+    runs-on: ubuntu-latest
+    needs: test # 'test' job が成功した場合のみ実行
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel
+
+      - name: Deploy to Vercel
+        run: vercel --prod --token ${{ secrets.VERCEL_TOKEN }}
+        env:
+          # VercelにSupabaseの公開キーなどを渡す
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_SENTRY_DSN_FRONTEND: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN_FRONTEND }}
